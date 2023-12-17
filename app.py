@@ -1,45 +1,34 @@
 from flask import Flask, request, jsonify, abort
+from datetime import datetime, timedelta
 import os
 import threading
 from users import UserManager
-from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-# Initializing global variables
 posts = {}
-failed_attempts = {}
 block_ban_list = {}
-post_id_counter = 0
+post_id = 0
 user_manager = UserManager()
 lock = threading.Lock()
-ADMIN_KEY = "admin_key"
+admin_key = "admin_key"
 
-# Function to check if an IP address is blocked or banned
-def is_blocked_or_banned(ip_address):
-    if ip_address in block_ban_list:
-        expiry_time = block_ban_list[ip_address]['expiry']
-        if datetime.utcnow() <= expiry_time:
-            return True
-        else:
-            del block_ban_list[ip_address]
-    return False
-
-# Middleware to check block/ban status before every request
 @app.before_request
 def check_block_ban_status():
     ip_address = request.remote_addr
-    if is_blocked_or_banned(ip_address):
-        abort(403, description="Blocked or Banned")
+    if ip_address in block_ban_list:
+        expiry_time = block_ban_list[ip_address]['expiry']
+        if datetime.utcnow() <= expiry_time:
+            abort(403, "Blocked or Banned")
+        else:
+            del block_ban_list[ip_address]
 
-# Endpoint to create a moderator
 @app.route('/create_moderator', methods=['POST'])
 def create_moderator():
-    if request.headers.get('Admin-Key') != ADMIN_KEY:
-        abort(403, description="Unauthorized")
-    return jsonify({'message': 'Moderator created successfully'}), 201
+    if request.headers.get('Admin-Key') != admin_key:
+        abort(403, "Unauthorized")
+    return jsonify(message='Moderator created successfully'), 201
 
-# Endpoint to create a new user
 @app.route('/user', methods=['POST'])
 def create_user():
     content = request.json
@@ -47,12 +36,96 @@ def create_user():
     real_name = content.get('real_name', None)
 
     if not username:
-        abort(400, description="Username is required")
+        abort(400, "Username is required")
 
     new_user = user_manager.create_user(username, real_name)
-    return jsonify(user_id=new_user.user_id, user_key=new_user.key, username=new_user.username)
+    return jsonify(user_id=new_user.user_id, user_key=new_user.key, username=new_user.username), 201
 
-# ... (The rest of the code remains largely unchanged, with similar refactoring applied)
+@app.route('/user/<int:user_id>', methods=['GET'])
+def get_user_metadata(user_id):
+    user = user_manager.get_user(user_id)
+    if not user:
+        abort(404, "User not found")
 
-if __name__ == '__main__':
-    app.run(debug=True)
+    return jsonify(user_id=user.user_id, username=user.username, real_name=user.real_name), 200
+
+@app.route('/user/<int:user_id>', methods=['PUT'])
+def edit_user_metadata(user_id):
+    content = request.json
+    user_key = content.get('user_key')
+    new_real_name = content.get('real_name')
+
+    if not user_manager.validate_user(user_id, user_key):
+        abort(403, "Invalid user ID or key")
+
+    user = user_manager.get_user(user_id)
+    if new_real_name:
+        user.real_name = new_real_name
+
+    return jsonify(user_id=user.user_id, username=user.username, real_name=user.real_name), 200
+
+@app.route('/posts', methods=['GET'])
+def get_posts_by_date():
+    start = request.args.get('start')
+    end = request.args.get('end')
+
+    try:
+        if start:
+            start = datetime.fromisoformat(start)
+        if end:
+            end = datetime.fromisoformat(end)
+    except ValueError:
+        abort(400, "Invalid date format. Use ISO 8601 format.")
+
+    filtered_posts = []
+    with lock:
+        for post in posts.values():
+            post_time = datetime.fromisoformat(post['timestamp'])
+            if (not start or post_time >= start) and (not end or post_time <= end):
+                filtered_posts.append(post)
+
+    return jsonify(filtered_posts), 200
+
+@app.route('/post', methods=['POST'])
+def create_post():
+    global post_id
+    content = request.json
+    msg = content.get('msg')
+    user_id = content.get('user_id')
+    user_key = content.get('user_key')
+
+    if not msg:
+        abort(400, "Message is required")
+
+    with lock:
+        if user_id and user_key and user_manager.validate_user(user_id, user_key):
+            post_id += 1
+            key = os.urandom(24).hex()
+            timestamp = datetime.utcnow().isoformat()
+            post = {'id': post_id, 'key': key, 'timestamp': timestamp, 'msg': msg, 'user_id': user_id}
+            posts[post_id] = post
+            return jsonify(post), 201
+        abort(403, "Invalid user ID or key")
+
+@app.route('/post/<int:post_id>', methods=['GET'])
+def read_post(post_id):
+    with lock:
+        post = posts.get(post_id)
+        if not post:
+            abort(404, "Post not found")
+
+        user_data = None
+        if post.get('user_id'):
+            user = user_manager.get_user(post['user_id'])
+            if user:
+                user_data = {'user_id': user.user_id, 'username': user.username}
+        return jsonify(id=post['id'], timestamp=post['timestamp'], msg=post['msg'], user=user_data), 200
+
+@app.route('/post/<int:post_id>/delete/<key>', methods=['DELETE'])
+def delete_post(post_id, key):
+    with lock:
+        post = posts.get(post_id)
+        if not post:
+            abort(404, "Post not found")
+
+        if post['key'] == key or
