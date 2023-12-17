@@ -1,337 +1,368 @@
+import http
 import secrets
-from flask import Flask, request, jsonify
 from datetime import datetime
-import threading
+from threading import Lock
+import uuid
+from flask import Flask, jsonify, request
+from http import HTTPStatus
 import re
+import time
+
 app = Flask(__name__)
+lock_request = Lock()
 
-# Name: Gouranga Khande
-# CWID: 20008981
-# email-id: vkhande4@stevens.edu
-
-lock = threading.Lock()
-users = {}
-user_id = 0
 posts = {}
-id = 0
+n_bytes = 16
+users = {}
 
-# Extension 1 - Users and user keys
-@app.route('/user', methods=['POST'])
-def create_user():
-    with lock:
-        # check if request body is a valid JSON object
-        if not request.is_json:
-            return jsonify({'err': 'Request body must be a valid JSON object.'}), 400
-        
-        # check if the name and username fields are present and strings
-        name = request.json.get('name')
-        if not name or not isinstance(name, str):
-            return jsonify({'err': 'Name field is missing or not a string.'}), 400
-        
-        username = request.json.get('username')
-        if not username or not isinstance(username, str):
-            return jsonify({'err': 'Username field is missing or not a string.'}), 400
-        
-        # check if the username is already taken
-        for user in users.values():
-            if user['username'] == username:
-                return jsonify({'err': 'Username is already taken.'}), 400
-        
-        # generate unique id and key for user
-        global user_id
-        user_id += 1
-        user_key = secrets.token_urlsafe(16)
-        
-        # add user to dictionary
-        users[user_id] = {
-            'id': user_id,
-            'name': name,
-            'key': user_key,
-            'username': username
+
+def is_valid_username(username):
+    pattern = r"^[a-zA-Z0-9]{6,}$"
+    return bool(re.match(pattern, username))
+
+
+def generate_secured_key():
+    """Generate a random, unique key for a post"""
+    keys = [posts[p]['key'] for p in posts]
+    while 1 == 1:
+        key = secrets.token_hex(n_bytes)
+        if key not in keys:
+            return key
+
+
+def generate_secured_user_key():
+    """Generate a random, unique key for a user"""
+    while 1 == 1:
+        key = secrets.token_hex(n_bytes)
+        user_keys = [users[u]['key'] for u in users]
+        if key not in user_keys:
+            return key
+
+
+def is_valid_user_key(user_id, user_key):
+    curr_user = users[user_id]
+    if curr_user is not None:
+        return curr_user['key'] == user_key
+    return False
+
+
+def create_post(msg, user_id):
+    """Create a new post with the given message"""
+    with lock_request:
+        curr_post_id = len(posts) + 1000
+        curr_post = {
+            'id': curr_post_id,
+            'key': generate_secured_key(),
+            'timestamp': datetime.utcnow().isoformat(),
+            'msg': msg
         }
-        
-        # return user id and key as JSON response
-        return jsonify({
-            'id': user_id,
-            'key': user_key
-        }), 200
 
-# Extension 2 - User profiles (needs user)
-@app.route('/user/<int:id>', methods=['GET'])
-@app.route('/user/<string:username>', methods=['GET'])
-def read_user(id=None, username=None):
-    with lock:
-        if id:
-            if id not in users:
-                error_message = {'err': 'User not found with id ' + str(id)}
-                return jsonify(error_message), 404
-            else:
-                user_data = {
-                    'id': id,
-                    'name': users[id]['name'],
-                    #'key': users[id]['key'],
-                    'username': users[id]['username']
-                }
-                return jsonify(user_data), 200
-        elif username:
-            for user_id, user_info in users.items():
-                if user_info['username'] == username:
-                    user_data = {
-                        'id': user_id,
-                        'name': user_info['name'],
-                        #'key': user_info['key'],
-                        'username': user_info['username']
-                    }
-                    return jsonify(user_data), 200
-            error_message = {'err': 'User not found with username ' + username}
-            return jsonify(error_message), 404
+        if user_id is not None:
+            curr_post['user_id'] = user_id
+            # curr_post['user_key'] = user_key
+        posts[curr_post_id] = curr_post
+        return curr_post
 
-# Additional Extension for Updating user information
-@app.route('/user/<int:id>', methods=['PUT'])
-def update_user(id):
-    with lock:
-        if id in users:
-            user = users[id]
-            # get updated data from request body
-            data = request.json
-            # check if user's key matches
-            if data.get('key') == user['key']:
-                # update metadata
-                if data.get('name'):
-                    user['name'] = data['name']
-                if data.get('username'):
-                    # check if the username is same as before
-                    if user['username'] == data['username']:
-                        pass
-                    # check if the username is already taken
-                    else:
-                        for user_info in users.values():
-                            if user_info['username'] == data['username']:
-                                return jsonify({'error': 'Username is already taken.'}), 400
-                        user['username'] = data['username']
 
-                return jsonify({'message': 'User metadata updated successfully.'}), 200
-            else:
-                return jsonify({'error': 'Invalid user key.'}), 401
+def create_user(user_json):
+    """
+    Create a user from input json body
+    metadata: unique user_id, name, phone_num, city
+    user object: user_id, name, phone_num, city, created_at, user_key
+    :param user_json: user json
+    :return: newly created user
+    """
+    with lock_request:
+        default_unique_user_key = generate_secured_user_key()
+        curr_user = {
+            'user_id': user_json.get('user_id'),
+            'key': default_unique_user_key,
+            'created_at': datetime.utcnow().isoformat()
+        }
+        if user_json.get('name') is not None:
+            curr_user['name'] = user_json.get('name')
+        if user_json.get('phone_num') is not None:
+            curr_user['phone_num'] = user_json.get('phone_num')
+        if user_json.get('city') is not None:
+            curr_user['city'] = user_json.get('city')
+        users[user_json.get('user_id')] = curr_user
+        return curr_user
+
+
+def update_user(user_json, user_id):
+    with lock_request:
+        curr_user = users.get(user_id)
+        if user_json.get('name') is not None:
+            curr_user['name'] = user_json.get('name')
+        if user_json.get('phone_num') is not None:
+            curr_user['phone_num'] = user_json.get('phone_num')
+        if user_json.get('city') is not None:
+            curr_user['city'] = user_json.get('city')
+        users[user_id] = curr_user
+        user_ret = curr_user.copy()
+        del user_ret['key']
+        return user_ret
+
+
+# def generate_new_user_key(user_id):
+#     with lock_request:
+#         unique_user_key = generate_secured_user_key()
+#         curr_user = users.get(user_id)
+#         curr_user['key'] = unique_user_key
+#         users[user_id] = curr_user
+#         return curr_user
+
+
+def get_user(user_id):
+    with lock_request:
+        curr_user = users[user_id].copy()
+        del curr_user['key']
+        return curr_user
+
+
+def get_post_by_key(key):
+    """Get the post with the given key"""
+    with lock_request:
+        for k, v in posts:
+            if v['key'] == key:
+                post = posts[v['id']]
+                return jsonify(
+                    {'id': post['id'], 'timestamp': post['timestamp'], 'msg': post['msg']}), HTTPStatus.OK.value
+
+
+def get_post(post_id):
+    """Get the post with the given ID"""
+    with lock_request:
+        if post_id not in posts:
+            error = {'err': f'The post is not found with id: {post_id}'}
+            return jsonify(error), HTTPStatus.NOT_FOUND.value
         else:
-            return jsonify({'error': 'User not found.'}), 404
+            post = posts[post_id]
+            post_response = {'id': post['id'], 'timestamp': post['timestamp'], 'msg': post['msg']}
+            return jsonify(post_response), HTTPStatus.OK.value
 
-# Endpoint #1: create a post with POST /post
+
+def is_valid_key(post_id, key):
+    """
+    Checks whether the current key is valid user or valid post key whatever it is.
+    :param post_id: id of the post
+    :param key: key passed as an input
+    :return: boolean: true if key is valid
+    """
+
+    if post_id in posts:
+        curr_post = posts[post_id]
+        if curr_post.get('user_id') is not None:
+            user_keys = [users[u]['key'] for u in users]
+            user_id = curr_post.get('user_id')
+            if key in user_keys:
+                return users[user_id]['key'] == key
+        return curr_post['key'] == key
+    else:
+        return False
+
+
+def delete_post(post_id, key):
+    """Delete the post with the given ID and key"""
+    with lock_request:
+        if post_id not in posts:
+            error = {'err': f'The post is not found with id: {post_id}'}
+            return jsonify(error), HTTPStatus.NOT_FOUND.value
+        else:
+            if not is_valid_key(post_id, key):
+                error = {'err': f'The request has been forbidden for key: {key}'}
+                return jsonify(error), HTTPStatus.FORBIDDEN.value
+            else:
+                curr_post = posts[post_id]
+                del posts[post_id]
+                return jsonify(curr_post), HTTPStatus.OK.value
+
+
+@app.route('/', methods=['GET'])
+def server_test():
+    return 'Server is up and running on localhost:5000', HTTPStatus.OK.value
+
+
+@app.route('/all-posts', methods=['GET'])
+def get_all_posts():
+    return posts, HTTPStatus.OK.value
+
+
 @app.route('/post', methods=['POST'])
-def create_post():
-    with lock:
-        try:
-            request_data = request.get_json()
-
-            if 'msg' not in request_data or not isinstance(request_data['msg'], str):
-                raise ValueError('Request must contain a "msg" field of type string')
-            
-            key = secrets.token_urlsafe(16)
-            timestamp = datetime.utcnow().isoformat()
-            
-            global id
-            id += 1
-
-            if 'user_id' in request_data and 'user_key' in request_data:
-                
-                user_id = int(request_data['user_id'])
-                user_key = request_data['user_key']
-
-                if user_id not in users or users[user_id]['key'] != user_key:
-                    raise ValueError('Invalid user credentials')
-
-                # lets get username from user_id
-                username = users[user_id]['username']
-
-                post = {
-                    'id': id,
-                    'msg': request_data['msg'],
-                    'key': key,
-                    'timestamp': timestamp,
-                    'user_id': user_id,
-                    'username': username
-                }
-                posts[id] = post
-            elif ('user_id' in request_data and 'user_key' not in request_data) or ('user_id' not in request_data and 'user_key' in request_data):
-                raise ValueError('Request must both user_id and user_key :)')
+def handle_create_post():
+    """Handle a POST request to create a new post"""
+    if request.is_json:
+        msg = request.json.get('msg')
+        user_id = request.json.get('user_id')
+        if user_id is not None:
+            if user_id not in users:
+                error = {'err': f'Bad request. user_id {user_id} is not exist. Please enter valid user_id.'}
+                return jsonify(error), HTTPStatus.BAD_REQUEST.value
             else:
-                post = {
-                    'id': id,
-                    'msg': request_data['msg'],
-                    'key': key,
-                    'timestamp': timestamp,
-                }
-                posts[id] = post
-            return jsonify(post), 200
+                user_key = request.json.get('user_key')
+                if user_key is None:
+                    error = {'err': f'Bad request. user key has to be passed if user_id is added.'}
+                    return jsonify(error), HTTPStatus.BAD_REQUEST.value
+                if is_valid_user_key(user_id, user_key):
+                    post = create_post(msg, user_id)
+                    return jsonify(post), HTTPStatus.OK.value
+                else:
+                    error = {'err': f'The user_id {user_id} does not match with key {user_key}'}
+                    return jsonify(error), HTTPStatus.FORBIDDEN.value
+        if msg is not None:
+            post = create_post(msg, None)
+            return jsonify(post), HTTPStatus.OK.value
+    else:
+        error = {'err': 'Bad request'}
+        return jsonify(error), HTTPStatus.BAD_REQUEST.value
 
-        except ValueError as e:
-            error_message = {'err': str(e)}
-            return jsonify(error_message), 400
 
-        except Exception as e:
-            error_message = {'err': str(e)}
-            return jsonify(error_message), 500
+@app.route('/post/<int:post_id>', methods=['GET'])
+def handle_get_post(post_id):
+    """Handle a GET request to get a post by ID"""
+    return get_post(post_id)
 
-# Endpoint #2: read a post with GET /post/{{id}}
-@app.route('/post/<int:id>', methods=['GET'])
-def read_post(id):
-    with lock:
-        if id not in posts:
-            error_message = {'err': 'Post not found with id ' + str(id)}
-            return jsonify(error_message), 404
-        else:
-            post = posts[id]
-            read_check=list(post.keys())
-            if read_check.__contains__("user_id") and read_check.__contains__("username"):
-                post_data = {
-                    'id': post['id'],
-                    'msg': post['msg'],
-                    'timestamp': post['timestamp'],
-                    "user_id": post["user_id"],
-                    "username": post["username"]
-                }
-            else:
-                post_data = {
-                    'id': post['id'],
-                    'msg': post['msg'],
-                    'timestamp': post['timestamp'],
-                }
-            return jsonify(post_data), 200
-        
-# Endpoint #3: delete a post with DELETE /post/{{id}}/delete/{{key}}
-@app.route('/post/<int:id>/delete/<string:key>', methods=['DELETE'])
-def delete_post(id, key):
-    with lock:
-        if id not in posts:
-            error_message = {'err': 'Post not found with id ' + str(id)}
-            return jsonify(error_message), 404
-        elif posts[id]['key'] != key:
-            error_message = {'err': 'Key does not match for post with id ' + str(id)}
-            return jsonify(error_message), 403
-        else:
-            post = posts.pop(id)
-            post_check=list(post.keys())
-            if post_check.__contains__("user_id") and post_check.__contains__("username"):
-                post_data = {
-                    'id': post['id'],
-                    'key': post['key'],
-                    'timestamp': post['timestamp'],
-                    'user_id': post['user_id'],
-                    'username': post['username']
-                }
-            else:
-                post_data = {
-                    'id': post['id'],
-                    'key': post['key'],
-                    'timestamp': post['timestamp'],
-                }
-            return jsonify(post_data), 200
 
-# Extension 3 - Date- and time-based range queries
-@app.route('/posts', methods=['GET'])
-def get_posts():
-    with lock:
-        # check if request body is a valid JSON object
-        if not request.is_json:
-            return jsonify({'err': 'Request body must be a valid JSON object.'}), 400
-        
-        # check if the name and username fields are present and strings
-        start_time_str = request.json.get('start_date_time')
-        end_time_str = request.json.get('end_date_time')
-        if not start_time_str and not end_time_str:
-            return jsonify({'err': 'Start date time and End Date time fields are missing. Please include "start_date_time" and "end_date_time" '}), 400
-        if (start_time_str and not isinstance(start_time_str, str)) or (end_time_str and not isinstance(end_time_str, str)):
-            return jsonify({'err': 'Both fields should be strings'}), 400
-        
-        try:
-            if(start_time_str and end_time_str):
-                start_time = datetime.fromisoformat(start_time_str)
-                end_time = datetime.fromisoformat(end_time_str)
-            elif(start_time_str and not end_time_str):
-                start_time = datetime.fromisoformat(start_time_str)
-            elif(end_time_str and not start_time_str):
-                end_time = datetime.fromisoformat(end_time_str)
-        except ValueError:
-            return jsonify({'err': 'Please follow the correct Date - Time ISO8601 format - YYYY-MM-DDTHH:MM:SS.ssssss or YYYY-MM-DD .'}), 400
-        
-        if(start_time_str and end_time_str):
-            if start_time>end_time:
-                return jsonify({'err': 'Start time cannot be ahead of End time. Please correct the time.'}), 400   
-           
-        
-        # Filter posts based on timestamp range
-        filtered_posts = []
-        for post in posts:
-            
-            post_time = datetime.fromisoformat(posts[post]['timestamp'])
-            if start_time_str and end_time_str:
-                if start_time <= post_time <= end_time:
-                    return_post=posts[post]
-                    del return_post['key']
-                    filtered_posts.append(return_post)
-            elif start_time_str:
-                if start_time <= post_time:
-                    return_post=posts[post]
-                    del return_post['key']
-                    filtered_posts.append(return_post)
-            elif end_time_str:
-                if post_time <= end_time:
-                    return_post=posts[post]
-                    del return_post['key']
-                    filtered_posts.append(return_post)               
-        
-        if len(filtered_posts)==0:
-            return "No posts are created in the given timeframe"
-        else:
-            return jsonify(filtered_posts)
+@app.route('/post/<int:post_id>/delete/<string:key>', methods=['DELETE'])
+def handle_delete_post(post_id, key):
+    """Handle a DELETE request to delete a post by ID and key"""
+    return delete_post(post_id, key)
 
-# Extension 4 - User-based range queries
-@app.route('/posts/user/<string:username>', methods=['GET'])
-def get_posts_by_user(username):
-    with lock:
-        # Filter posts based on user
-        username_list=list(users.values())
-        username_list_names=[x['username'] for x in username_list]
-        if not isinstance(username, str):
-            return jsonify({'err': 'username should be in string format'}), 400
-        if username not in username_list_names:
-            return jsonify({'err': 'No username found: ' + username + ' Please enter correct username'}), 400
-        filtered_posts = []
-        for post in posts.values():
-            if list(post.keys()).__contains__("username"):
-                if post['username'] == username:
-                    return_post=post
-                    del return_post['key']
-                    filtered_posts.append(return_post)  
-        
-        # Return filtered posts as JSON
-        return jsonify(filtered_posts)
 
-# Extension 5 - Fulltext search
-@app.route('/posts/search', methods=['GET'])
+@app.route('/user', methods=['POST'])
+def handle_add_user():
+    """
+    Create user API end point
+    metadata: unique user_id, name, phone_num, city
+    user object: user_id, name, phone_num, city, created_at, user_key
+    :return: creates user with input body info
+    """
+    if request.is_json:
+        if request.json.get('user_id') is None:
+            error = {'err': 'Bad request. user_id has to be passed in order to create user'}
+            return jsonify(error), HTTPStatus.BAD_REQUEST.value
+
+        if request.json.get('user_id') in users:
+            user_id = request.json.get('user_id')
+            error = {'err': f'Bad request. user_id {user_id} is already taken. Please use another user_id'}
+            return jsonify(error), HTTPStatus.BAD_REQUEST.value
+
+        if not is_valid_username(request.json.get('user_id')):
+            error = {'err': f'The username is not valid. A username should have least 6 character (digit/alphabets), '
+                            f'no spaces & special characters.'}
+            return jsonify(error), HTTPStatus.BAD_REQUEST.value
+
+        user = create_user(request.json)
+        return jsonify(user), HTTPStatus.OK.value
+    else:
+        error = {'err': 'Bad request'}
+        return jsonify(error), HTTPStatus.BAD_REQUEST.value
+
+
+@app.route('/user/<string:user_id>', methods=['PUT'])
+def handle_update_user(user_id):
+    """
+    Updates user API end point
+    metadata: unique user_id, name, phone_num, city
+    user object: user_id, name, phone_num, city, created_at, user_key
+    :return: updates metadata of the given user
+    """
+    if user_id not in users:
+        error = {'err': f'user with id {user_id} is not found.'}
+        return jsonify(error), HTTPStatus.NOT_FOUND.value
+    curr_user = update_user(request.json, user_id)
+    return jsonify(curr_user), HTTPStatus.OK.value
+
+
+@app.route('/all-users', methods=['GET'])
+def handle_get_all_users():
+    return users, HTTPStatus.OK.value
+
+
+# @app.route('/user/<string:user_id>/keys', methods=['PUT'])
+# def handle_generate_user_key(user_id):
+#     """
+#     Creates new user_key API end point
+#     :return: return newly created user_key for a user
+#     """
+#     if user_id not in users:
+#         error = {'err': f'user with id {user_id} is found.'}
+#         return jsonify(error), HTTPStatus.NOT_FOUND.value
+#     curr_user = generate_new_user_key(user_id)
+#     return jsonify(curr_user), HTTPStatus.OK.value
+
+
+@app.route('/user/<string:user_id>', methods=['GET'])
+def handle_get_user(user_id):
+    """
+    Get user API end point
+    :return: returns user for given query param user_id
+    """
+    if user_id not in users:
+        error = {'err': f'user with id {user_id} is not found.'}
+        return jsonify(error), HTTPStatus.NOT_FOUND.value
+    curr_user = get_user(user_id)
+    return jsonify(curr_user), HTTPStatus.OK.value
+
+
+@app.route('/post/user/<string:user_id>', methods=['GET'])
+def handle_user_posts(user_id):
+    """
+    Get user posts by the given user id
+    :return: returns posts that posted by the user
+    """
+    users_posts = []
+    if user_id not in users:
+        error = {'err': f'user with id {user_id} is not found.'}
+        return jsonify(error), HTTPStatus.NOT_FOUND.value
+    for post in posts:
+        if posts[post].get('user_id') is not None and posts[post].get('user_id') == user_id:
+            curr_post = posts[post].copy()
+            del curr_post['key']
+            users_posts.append(curr_post)
+    return users_posts, HTTPStatus.OK.value
+
+
+@app.route('/post', methods=['GET'])
 def search_posts():
-    with lock:
-        
-        # check if request body is a valid JSON object
-        if not request.is_json:
-            return jsonify({'err': 'Request body must be a valid JSON object.'}), 400
-        
-        # Get search from request json
-        query = request.json.get('query')
-        
-        if not query or isinstance(query,int):
-            return jsonify({'err': 'Missing query field or query is not a string. Please correct it!'}), 400
-        
-        # Search posts based on fulltext search
-        matched_posts = []
-        for post in posts:
-            if re.search(query, posts[post]['msg'], re.IGNORECASE):
-                return_post=posts[post]
-                del return_post['key']
-                matched_posts.append(return_post)  
-        
-        if len(matched_posts)==0:
-            return "No Matched posts with the query"
-        else:
-        # Return matched posts as JSON
-            return jsonify(matched_posts)
+    query = request.args.get('query')
+    if query is not None:
+        results = []
+        for post_id in posts:
+            post = posts[post_id]
+            if query.lower() in post['msg'].lower():
+                curr_post = {'id': post['id'], 'timestamp': post['timestamp'], 'msg': post['msg']}
+                results.append(curr_post)
+
+        return jsonify(results), HTTPStatus.OK.value
+
+    start_time = request.args.get('start_time')
+    end_time = request.args.get('end_time')
+
+    if start_time is None and end_time is None:
+        error = {'err': f'Bad Request. Please provide at least one parameter (start_time or end_time) or query.'}
+        return jsonify(error), HTTPStatus.BAD_REQUEST.value
+
+    if start_time is not None and end_time is not None and end_time < start_time:
+        error = {'err': f'Bad Request. end_time has to be greater than start_time. '}
+        return jsonify(error), HTTPStatus.BAD_REQUEST.value
+
+    filtered_posts = []
+    for post_id in posts:
+        post = posts[post_id]
+
+        post_time = post['timestamp']
+        if start_time and end_time:
+            if start_time <= post_time <= end_time:
+                curr_post = {'id': post['id'], 'timestamp': post['timestamp'], 'msg': post['msg']}
+                filtered_posts.append(curr_post)
+        elif start_time:
+            if post_time >= start_time:
+                curr_post = {'id': post['id'], 'timestamp': post['timestamp'], 'msg': post['msg']}
+                filtered_posts.append(curr_post)
+        elif end_time:
+            if post_time <= end_time:
+                curr_post = {'id': post['id'], 'timestamp': post['timestamp'], 'msg': post['msg']}
+                filtered_posts.append(curr_post)
+
+    return jsonify(filtered_posts), HTTPStatus.OK.value
