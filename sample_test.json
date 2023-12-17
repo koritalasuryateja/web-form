@@ -1,0 +1,38 @@
+{
+    "info": {
+        "name": "API Test Collection",
+        "_postman_id": "example-id",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Test Endpoint 1",
+            "request": {
+                "method": "GET",
+                "url": "http://localhost:5000/api/endpoint1",
+                "header": [],
+                "body": {}
+            },
+            "response": []
+        },
+        {
+            "name": "Test Endpoint 2",
+            "request": {
+                "method": "POST",
+                "url": "http://localhost:5000/api/endpoint2",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\"key1\": \"value1\", \"key2\": \"value2\"}"
+                }
+            },
+            "response": []
+        }
+        // Add more tests here
+    ]
+}
