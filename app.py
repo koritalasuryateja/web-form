@@ -6,7 +6,8 @@ from datetime import datetime
 app = Flask(__name__)
 
 posts = {}
-next_id = 1
+next_user_id = 1  # Initialize next_user_id
+
 class User:
     def __init__(self, username, email, real_name, avatar_icon):
         self.id = next_user_id
@@ -15,7 +16,8 @@ class User:
         self.real_name = real_name
         self.avatar_icon = avatar_icon
         self.posts = []  # Store posts created by this user
-        next_user_id += 1
+        next_user_id += 1  # Increment next_user_id
+
 
 # Create a sample user
 sample_user = User("user1", "user1@example.com", "John Doe", "avatar1")
