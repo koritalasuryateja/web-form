@@ -1,13 +1,10 @@
-# Testing for Baseline flow and Extensions
-#!/bin/sh
+#!/bin/bash
+python3 app.py &
+APP_PID=$!
+python3 test.py
 
-set -e # exit immediately if newman complains
-trap 'kill $PID' EXIT # kill the server on exit
+# Run Postman collections with Newman
+newman run forum_multiple_posts.postman_collection.json -e env.json
+newman run forum_post_read_delete.postman_collection.json -e env.json
 
-chmod +x run.sh
-
-bash run.sh &
-PID=$! # record the PID
-
-newman run forum_multiple_posts.postman_collection.json -e env.json # use the env file
-newman run forum_post_read_delete.postman_collection.json -n 50 # 50 iterations
+kill APP_PID=$!
