@@ -124,8 +124,24 @@ def read_post(post_id):
 @app.route('/post/<int:post_id>/delete/<key>', methods=['DELETE'])
 def delete_post(post_id, key):
     with lock:
-        post = posts.get(post_id)
-        if not post:
-            abort(404, "Post not found")
+        # Check if the post exists
+        if post_id not in posts:
+            abort(404, description="Post not found")
 
-        if post['key'] == key or
+        post = posts[post_id]
+
+        # Check if the user is a moderator with the correct key
+        if any(user.is_moderator and user.mod_key == key for user in user_manager.users.values()):
+            del posts[post_id]
+            return jsonify(status="Post deleted by moderator")
+
+        # Check if the provided key matches the post's key or the user's key
+        is_user_authorized = post['key'] == key or (post.get('user_id') and user_manager.validate_user(post['user_id'], key))
+        if is_user_authorized:
+            del posts[post_id]
+            return jsonify(id=post_id, key=key, timestamp=post['timestamp'])
+
+        abort(403, description="Forbidden: Invalid key")
+
+if __name__ == '__main__':
+    app.run(debug=True)
