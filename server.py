@@ -47,7 +47,8 @@ def register_member():
         abort(400, description="Member name required")
 
     new_member = member_manager.register_member(member_name, full_name)
-    return jsonify(member_id=new_member.member_id, member_key=new_member.access_key, member_name=new_member.nickname)
+    return jsonify(member_id=new_member.member_id, member_key=new_member.access_key, member_name=new_member.nickname, user_key=new_member.user_key)
+
 
 @forum_app.route('/member/<int:member_id>', methods=['GET'])
 def get_member_info(member_id):
@@ -123,14 +124,9 @@ def add_post():
                 return jsonify(discussion)
             else:
                 abort(403, description="Invalid member ID or key")
+    else:
+        abort(400, description="Member ID and key required")
 
-    with sync_lock:
-        unique_post_id += 1
-        secure_key = os.urandom(24).hex()
-        time_stamp = dt.utcnow().isoformat()
-        discussion_posts[unique_post_id] = {'id': unique_post_id, 'key': secure_key, 'timestamp': time_stamp, 'message': data['message']}
-
-    return jsonify(id=unique_post_id, key=secure_key, timestamp=time_stamp)
 
 @forum_app.route('/discussion/<int:post_id>', methods=['GET'])
 def view_post(post_id):
@@ -147,21 +143,22 @@ def view_post(post_id):
         else:
             abort(404, description="Discussion not found")
 
-@forum_app.route('/discussion/<int:post_id>/remove/<key>', methods=['DELETE'])
-def remove_post(post_id, key):
+@forum_app.route('/discussion/<int:post_id>/remove', methods=['DELETE'])
+def remove_post(post_id):
+    key = request.args.get('key')
     with sync_lock:
         if post_id not in discussion_posts:
             abort(404, description="Discussion not found")
 
         discussion = discussion_posts[post_id]
-        if any(member.mod_access_key == key and member.moderator_status for member in member_manager.members.values()):
-            del discussion_posts[post_id]
-            return jsonify(status="Discussion removed by moderator")
-        if discussion['key'] == key or (discussion.get('member_id') and member_manager.validate_member(discussion.member_id, key)):
-            del discussion_posts[post_id]
-            return jsonify(id=post_id, key=key, timestamp=discussion['timestamp'])
+        if discussion.get('member_id'):
+            if member_manager.validate_member(discussion.get('member_id'), key):
+                del discussion_posts[post_id]
+                return jsonify(status="Discussion removed")
+            else:
+                abort(403, description="Forbidden: Invalid key")
         else:
-            abort(403, description="Forbidden: Invalid key")
+            abort(404, description="Member not found for the discussion")
 
 @forum_app.route('/discussion/<int:post_id>/edit', methods=['PUT'])
 def edit_post(post_id):
@@ -170,22 +167,14 @@ def edit_post(post_id):
     member_key = content.get('member_key')
     new_message = content.get('new_message')
 
-    # Check if the member is authorized to edit the post
     with sync_lock:
         if post_id in discussion_posts:
             discussion = discussion_posts[post_id]
-            discussion['message'] = new_message
-            return jsonify(id=discussion['id'], timestamp=discussion['timestamp'], message=new_message, member_id=member_id)
-            '''if discussion.get('member_id') == member_id:
-                # Validate the member's access key
-                if member_manager.validate_member(member_id, member_key):
-                    # Update the post message
-                    discussion['message'] = new_message
-                    return jsonify(id=discussion['id'], timestamp=discussion['timestamp'], message=new_message, member_id=member_id)
-                else:
-                    abort(403, description="Invalid member ID or key")
+            if discussion.get('member_id') == member_id and member_manager.validate_member(member_id, member_key):
+                discussion['message'] = new_message
+                return jsonify(id=discussion['id'], timestamp=discussion['timestamp'], message=new_message)
             else:
-                abort(405, description="You do not have permission to edit this post")'''
+                abort(403, description="Invalid member ID or key")
         else:
             abort(404, description="Post not found")
 
@@ -197,14 +186,15 @@ def update_user_profile(user_id):
     new_real_name = content.get('new_real_name')
 
     if not member_manager.validate_user(user_id):
-        abort(403, description="Invalid user ID or key")
+        abort(403, description="Invalid user ID")
 
     user = member_manager.get_member_info(user_id)
-    if user:
+    if user and user.user_key == user_key:  # Validate the user key
         user.real_name = new_real_name
         return jsonify(user_id=user.member_id, username=user.nickname, real_name=user.full_name)
     else:
-        abort(404, description="User not found")
+        abort(404, description="User not found or invalid key")
+
 
 @forum_app.route('/posts/search', methods=['GET'])
 def search_posts():
