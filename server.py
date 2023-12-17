@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify, abort
 import datetime
 import threading
-from web_users import MemberManager
+from users import MemberManager
 from datetime import datetime as dt, timedelta
 import os
 
