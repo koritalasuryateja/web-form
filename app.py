@@ -1,16 +1,16 @@
 
-from flask import Flask, request, jsonify, abort
+from flask import Flask, request, jsonify
 import secrets
 from datetime import datetime
 
 app = Flask(__name__)
 
 posts = {}
-next_id = 1  # Initialize next_id
-master_key = "your_master_key_here"  # Set your master key
+next_user_id = 1  # Initialize next_user_id
 
 class User:
     def __init__(self, username, email, real_name, avatar_icon):
+        global next_user_id  # Add this line to access the global variable
         self.id = next_user_id
         self.username = username
         self.email = email
@@ -21,7 +21,8 @@ class User:
 
 # Create a sample user
 sample_user = User("user1", "user1@example.com", "John Doe", "avatar1")
-users = {sample_user.id: sample_user}  # Initialize users dictionary
+users = {}  # Add this line to create an empty users dictionary
+users[sample_user.id] = sample_user
 
 @app.route('/add_moderator', methods=['POST'])
 def add_moderator():
@@ -78,5 +79,6 @@ def delete_post(post_id, key):
 
 
 
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0', port=5000)
