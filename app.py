@@ -1,12 +1,13 @@
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, abort
 import secrets
 from datetime import datetime
 
 app = Flask(__name__)
 
 posts = {}
-next_user_id = 1  # Initialize next_user_id
+next_id = 1  # Initialize next_id
+master_key = "your_master_key_here"  # Set your master key
 
 class User:
     def __init__(self, username, email, real_name, avatar_icon):
@@ -18,10 +19,9 @@ class User:
         self.posts = []  # Store posts created by this user
         next_user_id += 1  # Increment next_user_id
 
-
 # Create a sample user
 sample_user = User("user1", "user1@example.com", "John Doe", "avatar1")
-users[sample_user.id] = sample_user
+users = {sample_user.id: sample_user}  # Initialize users dictionary
 
 @app.route('/add_moderator', methods=['POST'])
 def add_moderator():
