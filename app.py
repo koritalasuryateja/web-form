@@ -31,14 +31,18 @@ def create_moderator():
 
 @app.route('/user', methods=['POST'])
 def create_user():
-    content = request.json
+    content = request.json or {}
     username = content.get('username')
     real_name = content.get('real_name', None)
 
     if not username:
         abort(400, "Username is required")
 
-    new_user = user_manager.create_user(username, real_name)
+    try:
+        new_user = user_manager.create_user(username, real_name)
+    except ValueError as e:
+        abort(400, str(e))
+
     return jsonify(user_id=new_user.user_id, user_key=new_user.key, username=new_user.username), 201
 
 @app.route('/user/<int:user_id>', methods=['GET'])
@@ -51,7 +55,7 @@ def get_user_metadata(user_id):
 
 @app.route('/user/<int:user_id>', methods=['PUT'])
 def edit_user_metadata(user_id):
-    content = request.json
+    content = request.json or {}
     user_key = content.get('user_key')
     new_real_name = content.get('real_name')
 
@@ -70,10 +74,8 @@ def get_posts_by_date():
     end = request.args.get('end')
 
     try:
-        if start:
-            start = datetime.fromisoformat(start)
-        if end:
-            end = datetime.fromisoformat(end)
+        start = datetime.fromisoformat(start) if start else None
+        end = datetime.fromisoformat(end) if end else None
     except ValueError:
         abort(400, "Invalid date format. Use ISO 8601 format.")
 
@@ -89,7 +91,7 @@ def get_posts_by_date():
 @app.route('/post', methods=['POST'])
 def create_post():
     global post_id
-    content = request.json
+    content = request.json or {}
     msg = content.get('msg')
     user_id = content.get('user_id')
     user_key = content.get('user_key')
@@ -124,24 +126,21 @@ def read_post(post_id):
 @app.route('/post/<int:post_id>/delete/<key>', methods=['DELETE'])
 def delete_post(post_id, key):
     with lock:
-        # Check if the post exists
-        if post_id not in posts:
-            abort(404, description="Post not found")
+        post = posts.get(post_id)
+        if not post:
+            abort(404, "Post not found")
 
-        post = posts[post_id]
-
-        # Check if the user is a moderator with the correct key
-        if any(user.is_moderator and user.mod_key == key for user in user_manager.users.values()):
+        # Moderator deletion check
+        if any(user.mod_key == key and user.is_moderator for user in user_manager.users.values()):
             del posts[post_id]
             return jsonify(status="Post deleted by moderator")
 
-        # Check if the provided key matches the post's key or the user's key
-        is_user_authorized = post['key'] == key or (post.get('user_id') and user_manager.validate_user(post['user_id'], key))
-        if is_user_authorized:
+        # User deletion check
+        if post['key'] == key or (post.get('user_id') and user_manager.validate_user(post['user_id'], key)):
             del posts[post_id]
-            return jsonify(id=post_id, key=key, timestamp=post['timestamp'])
+            return jsonify(status="Post deleted")
 
-        abort(403, description="Forbidden: Invalid key")
+        abort(403, "Forbidden: Invalid key")
 
 if __name__ == '__main__':
     app.run(debug=True)
