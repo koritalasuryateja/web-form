@@ -1,15 +1,7 @@
-#!/bin/bash
+#!/bin/sh
 
-# Install OpenSSL
-pip3 install pyopenssl
-
-
-# Install datetime
-pip3 install datetime
-
-# Install secrets
-pip3 install secrets
-
-
-# Update pip and setup tools
-pip3 install --upgrade pip setuptools
+# installing dependencies
+pip3 install threading
+pip3 install flask
+pip3 install secret
+pip3 install uuid
