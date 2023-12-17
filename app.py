@@ -27,24 +27,24 @@ def check_block_ban_status():
 def create_moderator():
     if request.headers.get('Admin-Key') != admin_key:
         abort(403, "Unauthorized")
+    moderator_username = request.json.get('username')
+    moderator_real_name = request.json.get('real_name')
+    if not moderator_username:
+        abort(400, "Username is required")
+    new_moderator = user_manager.create_moderator(moderator_username, moderator_real_name)
     return jsonify(message='Moderator created successfully'), 201
 
 @app.route('/user', methods=['POST'])
 def create_user():
-    content = request.json or {}
+    content = request.json
     username = content.get('username')
     real_name = content.get('real_name', None)
 
     if not username:
         abort(400, "Username is required")
 
-    try:
-        new_user = user_manager.create_user(username, real_name)
-    except ValueError as e:
-        abort(400, str(e))
-
-    # Changed status code to 200 to satisfy the test
-    return jsonify(user_id=new_user.user_id, user_key=new_user.key, username=new_user.username), 200
+    new_user = user_manager.create_user(username, real_name)
+    return jsonify(user_id=new_user.user_id, user_key=new_user.key, username=new_user.username), 201
 
 @app.route('/user/<int:user_id>', methods=['GET'])
 def get_user_metadata(user_id):
