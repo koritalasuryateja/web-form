@@ -1,5 +1,5 @@
 #!/bin/bash
-python3 server_v2.py &
+python3 app.py &
 APP_PID=$!
 python3 test.py
 
