@@ -18,18 +18,26 @@ class TestMemberManager(unittest.TestCase):
             self.member_manager = MemberManager()
 
     def test_user_creation(self):
-        # Test user creation
-        response = self.app.post('/member', json={'member_name': 'testuser', 'full_name': 'Test User'})
-        self.assertEqual(response.status_code, 200)
-        data = json.loads(response.data)
-        self.assertTrue(data['member_name'].startswith('testuser'))
+    # Test user creation
+    response = self.app.post('/member', json={'member_name': 'testuser', 'full_name': 'Test User'})
+    self.assertEqual(response.status_code, 200)
+    data = json.loads(response.data)
+    self.assertIn('member_id', data)
+    self.assertIn('member_key', data)
+    self.assertIn('user_key', data)  # Assuming user_key is also returned
+    self.assertTrue(data['member_name'].startswith('testuser'))
+
 
     def test_moderator_creation(self):
-        # Test moderator creation
-        response = self.app.post('/add_moderator',
-                                headers={'Master-Key': 'admin_key'},
-                                json={'member_name': 'newmod', 'full_name': 'New Mod'})
-        self.assertEqual(response.status_code, 201)
+    # Test moderator creation
+    response = self.app.post('/add_moderator',
+                             headers={'Master-Key': 'admin_key'},
+                             json={'member_name': 'newmod', 'full_name': 'New Mod'})
+    self.assertEqual(response.status_code, 201)
+    data = json.loads(response.data)
+    self.assertIn('response', data)  # Check if response message is included in the data
+    self.assertEqual(data['response'], 'Moderator added successfully')
+
 
     def test_user_auth(self):
         # Test user authentication
