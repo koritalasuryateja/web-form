@@ -1,12 +1,14 @@
-
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, abort
 import secrets
 from datetime import datetime
 
 app = Flask(__name__)
 
 posts = {}
-next_user_id = 1  # Initialize next_user_id
+next_id = 1  # Initialize next_id
+
+# Define a secret key for authentication
+master_key = "your_secret_key"  # Set your secret key here
 
 class User:
     def __init__(self, username, email, real_name, avatar_icon):
@@ -30,7 +32,6 @@ def add_moderator():
         abort(403, description="Not Authorized")
     return jsonify({'response': 'Moderator added successfully'}), 201
 
-
 @app.route('/post', methods=['POST'])
 def create_post():
     global next_id
@@ -49,8 +50,6 @@ def create_post():
     next_id += 1
     return jsonify(response)
 
-
-
 @app.route('/post/<int:post_id>', methods=['GET'])
 def read_post(post_id):
     post = posts.get(post_id)
@@ -64,7 +63,6 @@ def read_post(post_id):
     }
     return jsonify(response)
 
-
 @app.route('/post/<int:post_id>/delete/<key>', methods=['DELETE'])
 def delete_post(post_id, key):
     post = posts.get(post_id)
@@ -76,9 +74,6 @@ def delete_post(post_id, key):
 
     del posts[post_id]
     return jsonify({'id': post_id, 'key': key, 'timestamp': post['timestamp']})
-
-
-
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
