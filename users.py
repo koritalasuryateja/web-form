@@ -1,45 +1,57 @@
+
 import os
 
-class User:
-    """ Represents a user in the system. """
-    def __init__(self, user_id, key, username, real_name=None, is_moderator=False, mod_key=None):
-        self.user_id = user_id
-        self.key = key
-        self.username = username
-        self.real_name = real_name
-        self.is_moderator = is_moderator
-        self.mod_key = mod_key if is_moderator else None
+class ForumMember:
+    def __init__(self, member_id, access_key, nickname, moderator_status=False, mod_access_key=None, full_name=None):
+        self.member_id = member_id
+        self.access_key = access_key
+        self.nickname = nickname
+        self.moderator_status = moderator_status
+        self.mod_access_key = mod_access_key if moderator_status else None
+        self.full_name = full_name
 
-class UserManager:
-    """ Manages user creation and validation in the system. """
+class MemberManager:
     def __init__(self):
-        self.users = {}
-        self.next_user_id = 1
+        self.members = {}
+        self.id_counter = 0
 
-    def _create_user(self, username, real_name, is_moderator=False):
-        """ Creates a generic user, used internally for both users and moderators. """
-        if any(user.username == username for user in self.users.values()):
-            raise ValueError("Username already exists")
+    def create_forum_moderator(self, nickname, full_name):
+        self.id_counter += 1
+        member_access_key = os.urandom(24).hex()
+        moderator_key = os.urandom(24).hex()
+        new_member = ForumMember(self.id_counter, member_access_key, nickname, True, moderator_key, full_name)
+        self.members[self.id_counter] = new_member
+        return new_member
 
-        user_key = os.urandom(24).hex()
-        mod_key = os.urandom(24).hex() if is_moderator else None
-        new_user = User(self.next_user_id, user_key, username, real_name, is_moderator, mod_key)
-        self.users[self.next_user_id] = new_user
-        self.next_user_id += 1
-        return new_user
+    def register_member(self, nickname, full_name):
+        
+        original_nickname = nickname
+        nickname_suffix = 1
+        while any(member.nickname == nickname for member in self.members.values()):
+            nickname = f"{original_nickname}_{nickname_suffix}"
+            nickname_suffix += 1
 
-    def create_moderator(self, username, real_name):
-        """ Creates a moderator with unique keys. """
-        return self._create_user(username, real_name, is_moderator=True)
 
-    def create_user(self, username, real_name):
-        """ Creates a regular user. """
-        return self._create_user(username, real_name)
+        self.id_counter += 1
+        member_access_key = os.urandom(24).hex()
+        new_member = ForumMember(self.id_counter, member_access_key, nickname, full_name=full_name)
+        self.members[self.id_counter] = new_member
+        return new_member
 
-    def validate_user(self, user_id, key):
-        """ Validates if the user_id and key combination is correct. """
-        return user_id in self.users and self.users[user_id].key == key
+    def validate_member(self, member_id, provided_key):
+        if member_id in self.members:
+            return self.members[member_id].access_key == provided_key
+        return False
 
-    def get_user(self, user_id):
-        """ Retrieves a user by their ID. """
-        return self.users.get(user_id)
+    def get_member_info(self, member_id):
+        if member_id in self.members:
+            member = self.members[member_id]
+            return member
+            #return {'member_id': member.member_id, 'nickname': member.nickname, 'full_name': member.full_name}
+        return None
+
+    def validate_user(self, user_id):
+        # Placeholder implementation
+        member = self.members.get(user_id)
+        #return member and member.access_key == user_key
+        return member
