@@ -1,19 +1,15 @@
-#!/bin/sh
+#!/bin/bash
 
-pip3 install Flask flask-sqlalchemy flask-login flask-limiter marshmallow werkzeug
+# Install OpenSSL
+pip3 install pyopenssl
 
-# Install or update NVM
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
 
-# Source NVM in the current shell
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  
+# Install datetime
+pip3 install datetime
 
-# Install Node.js 16.x
-nvm install 16
+# Install secrets
+pip3 install secrets
 
-# Use Node.js 16.x
-nvm use 16
 
-# Install Newman
-npm install -g newman
+# Update pip and setup tools
+pip3 install --upgrade pip setuptools
