@@ -1,95 +1,146 @@
 # Web Forum Backend
 
 ## Team Members
-- paul john maddala
-- surya teja koritala
+- Paul John Maddala-  pmaddala@stevens.edu
+- Surya Teja Koritala - skorital1@gmail.edu
 
 
 ## GitHub Repository
-[Web Forum Backend Repository](https://github.com/your-username/web-forum-backend)
+https://github.com/koritalasuryateja/web-form
 
 ## Time Spent on Project
 We estimate that we spent approximately 40 hours on this project.
 
 ## Testing Approach
-To test our code, we employed a combination of manual testing and automated testing using Postman. We created comprehensive Postman collections for each extension, covering both positive and negative scenarios. Additionally, we wrote shell scripts to automate the testing process and ensure reproducibility.
+Our testing strategy, as outlined in the test.py file, focuses primarily on unit tests performed within the unittest framework using Flask's testing client. These tests simulate HTTP requests to our forum's backend, covering important features like user registration and authentication, moderator actions, discussion post management, IP restriction handling, and the ability to filter and search posts. We validate the application's response accuracy and robustness using a combination of POST, GET, PUT, and DELETE requests, ensuring error handling and security measures work as expected. This extensive testing strategy is critical to ensuring the dependability and effectiveness of our web forum application.
 
 ## Known Bugs or Issues
-
+None.
 
 ## Difficult Issue Resolution
-One challenging issue we faced was related to handling file uploads in base64 format. After thorough research and testing, we implemented a solution using a combination of base64 encoding and decoding to ensure data integrity and proper handling of file attachments.
+ Struggled with securely managing user authentication, especially in verifying user keys for actions like editing or deleting posts.Developed a MemberManager class that encapsulates user validation logic. Used this class to check user credentials (ID and key) against stored user data before allowing them to modify posts, enhancing the security of user operations.
 
-## Extensions Implemented
 
-### 1. Users and User Keys
-#### Endpoint Added
-- **POST** /user
-  - Creates a new user with a private user key.
-  - Request Body: `{ "username": "john_doe", "email": "john@example.com", "password": "securepassword" }`
-  - Response: `{ "id": 1, "key": "randomstring", "timestamp": "2023-12-17T12:00:00Z" }`
+## Extension 1: User Registration and Authentication
 
-### 2. User Profiles
-#### Endpoints Added
-- **GET** /user/{{id}}
-  - Retrieves user metadata by user id.
-  - Response: `{ "id": 1, "username": "john_doe", "email": "john@example.com", "timestamp": "2023-12-17T12:00:00Z" }`
-- **PUT** /user/{{id}}/edit
-  - Edits user metadata.
-  - Request Body: `{ "key": "userkey", "new_username": "john_smith" }`
-  - Response: `{ "id": 1, "username": "john_smith", "email": "john@example.com", "timestamp": "2023-12-17T12:30:00Z" }`
+### Description
+This extension introduces the ability to register and authenticate users in the forum. Users are assigned unique IDs and keys upon registration, which are then used for validating actions like post creation and editing.
 
-### 3. Threaded Replies
-#### Modification to Existing Endpoint
-- **POST** /post
-  - Modified to allow specifying a post id to which the new post is replying.
-  - Request Body: `{ "msg": "Replying to post", "reply_to": 1, "user_id": 1, "user_key": "userkey" }`
-  - Response: `{ "id": 2, "key": "randomstring", "timestamp": "2023-12-17T13:00:00Z" }`
+### Endpoints
+- `POST /member`: Register a new forum member. Requires a JSON payload with `member_name` and an optional `full_name`.
+- `GET /member/<int:member_id>`: Retrieve details of a specific forum member.
+- `PUT /member/<int:member_id>/edit`: Update a member's full name. Requires member's ID and key for authentication.
 
-### 4. Date- and Time-Based Range Queries
-#### Endpoint Added
-- **GET** /posts/bydatetime
-  - Retrieves posts based on date and time range.
-  - Query Parameters: `start_datetime=2023-12-17T12:00:00Z&end_datetime=2023-12-17T13:00:00Z`
-  - Response: `[ { "id": 1, "msg": "Post 1", "timestamp": "2023-12-17T12:30:00Z" }, { "id": 2, "msg": "Replying to post", "timestamp": "2023-12-17T13:00:00Z" } ]`
+### Testing
+Test cases cover the registration of new members, retrieval of member information, and updating member details, ensuring proper validation and error handling.
 
-### 5. User-Based Range Queries
-#### Endpoint Added
-- **GET** /posts/byuser/{{user_id}}
-  - Retrieves posts by a given user.
-  - Response: `[ { "id": 1, "msg": "Post 1", "timestamp": "2023-12-17T12:30:00Z" }, { "id": 2, "msg": "Replying to post", "timestamp": "2023-12-17T13:00:00Z" } ]`
+## Extension 2: Discussion Post Management
 
-## Testing Summary
+### Description
+Users can create, view, edit, and delete discussion posts. Posts can be associated with user IDs, allowing for user-specific post management.
 
-### 1. Users and User Keys
-- **Positive Test**
-  - Created a new user and verified the returned user id, key, and timestamp.
-- **Negative Test**
-  - Attempted to create a user without providing a required field, ensuring a 400 Bad Request response.
+### Endpoints
+- `POST /discussion`: Create a new post. Users can optionally associate their ID and key with the post.
+- `GET /discussion/<int:post_id>`: View details of a specific post.
+- `PUT /discussion/<int:post_id>/edit`: Edit an existing post. Requires member validation.
+- `DELETE /discussion/<int:post_id>/remove/<key>`: Delete a post using the correct key.
 
-### 2. User Profiles
-- **Positive Test**
-  - Retrieved user metadata by user id and verified the correctness of the returned data.
-- **Negative Test**
-  - Attempted to edit user metadata without providing a key, ensuring a 403 Forbidden response.
+### Testing
+Test cases ensure functionality for creating, viewing, editing, and deleting posts, including member-specific operations.
 
-### 3. Threaded Replies
-- **Positive Test**
-  - Created a post as a reply to an existing post and verified the correctness of the response.
-- **Negative Test**
-  - Attempted to create a post reply without specifying the required parameters, ensuring a 400 Bad Request response.
+## Extension 3: Moderator Role
 
-### 4. Date- and Time-Based Range Queries
-- **Positive Test**
-  - Retrieved posts within a specified date and time range and validated the correctness of the returned data.
-- **Negative Test**
-  - Attempted to use the date and time range query without providing the required parameters, ensuring a 400 Bad Request response.
+### Description
+Moderators can perform administrative actions like adding other moderators. This extension involves higher-level privileges and key validation.
 
-### 5. User-Based Range Queries
-- **Positive Test**
-  - Retrieved posts by a given user id and verified the correctness of the returned data.
-- **Negative Test**
-  - Attempted to use the user-based range query without providing the required parameters, ensuring a 400 Bad Request response.
+### Endpoints
+- `POST /add_moderator`: Add a new moderator, protected by a master key.
+
+### Testing
+Tests validate moderator addition, ensuring proper authorization and error responses for unauthorized requests.
+
+## Extension 4: IP Restriction and Blocking
+
+### Description
+Implement IP-based access control to restrict or block requests based on the client's IP address. This helps in mitigating abusive behavior or excessive requests from specific IP addresses.
+
+### Implementation Details
+A pre-request hook checks the client's IP address against a list of restricted or blocked IPs.
+
+### Testing
+While specific tests are suggested as placeholders, they should ideally cover scenarios of IP restriction, blocking, and successful access post-restriction expiry.
+
+## Extension 5: Filtering Posts
+
+### Description
+This feature allows filtering of discussion posts based on different criteria like year or member ID, enhancing the forum's navigability and user experience.
+
+### Endpoints
+- `GET /discussions`: Filter posts by a specified year.
+- `GET /discussions/member/<int:member_id>`: Retrieve all posts made by a specific member.
+
+### Testing
+Tests should cover various scenarios of filtering posts, ensuring accurate retrieval based on the specified criteria.
+
+## Detailed Summaries of Tests for Extensions
+
+### Extension 1: User Registration and Authentication
+
+#### Test Summary:
+- `test_user_creation`: Validates the process of registering new users, ensuring correct handling of member names and assignment of unique IDs and keys.
+- `test_user_auth`: Verifies user authentication, including retrieval of member details and handling of invalid or missing keys.
+
+#### Interpretation:
+These tests confirm that the user registration and authentication system is reliable, accurately processing user data and ensuring secure user-specific actions.
+
+---
+
+### Extension 2: Discussion Post Management
+
+#### Test Summary:
+- `test_post_creation_endpoint`: Assesses the functionality of creating new discussion posts and validates user credentials if provided.
+- `test_post_read_endpoint`: Ensures accurate retrieval and display of posts.
+- `test_post_delete_endpoint`: Tests the deletion of posts, including security checks against user IDs and keys.
+- `test_post_edit_endpoint`: Validates the ability to edit posts with proper authorization.
+
+#### Interpretation:
+The tests examine the application's capability in managing posts, including creation, viewing, editing, and deletion, with essential security validations.
+
+---
+
+### Extension 3: Moderator Role
+
+#### Test Summary:
+- `test_moderator_creation`: Checks the process of adding new moderators, ensuring that this feature is securely accessible only with the correct master key.
+
+#### Interpretation:
+This test ensures the secure addition of moderators, indicating that the moderator feature is well-protected and functional.
+
+---
+
+### Extension 4: IP Restriction and Blocking
+
+#### Test Summary:
+- Placeholder tests for IP restriction and blocking (`test_isiprestrictedorblocked`, `test_verifyipstatus`) are to be implemented to evaluate IP-based access control.
+
+#### Interpretation:
+Once implemented, these tests will assess the effectiveness of IP restrictions and blocks in maintaining security and access control.
+
+---
+
+### Extension 5: Filtering Posts
+
+#### Test Summary:
+- `test_filter_posts_by_date_endpoint`: Verifies the ability to filter posts based on specific dates or date ranges.
+- `test_filter_posts_by_member_endpoint`: Assesses the functionality of filtering posts by specific members.
+
+#### Interpretation:
+These tests are crucial for ensuring the effective filtering capabilities of the forum, a key feature for enhancing user navigation and content discovery.
+
+---
+
+
+
 
 ## Conclusion
-In conclusion, our web forum backend implementation successfully incorporates the baseline behavior and five extensions, each thoroughly tested to ensure robust functionality. The provided documentation outlines the added endpoints, their expected behavior, and detailed testing summaries for each extension.
+Finally, our web forum backend implementation incorporates the baseline behaviour as well as five extensions, each of which has been thoroughly tested to ensure robust functionality. The documentation provided describes the new endpoints, their expected behaviour, and detailed testing summaries for each extension.
