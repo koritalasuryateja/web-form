@@ -1,15 +1,16 @@
-import secrets
 from flask import Flask, request, jsonify
 from datetime import datetime
 import threading
+import secrets
 import re
+
 app = Flask(__name__)
 
 lock = threading.Lock()
 users = {}
 user_id = 0
 posts = {}
-id = 0
+post_id = 0
 
 # Extension 1 - Users and user keys
 @app.route('/user', methods=['POST'])
@@ -227,59 +228,32 @@ def delete_post(id, key):
 @app.route('/posts', methods=['GET'])
 def get_posts():
     with lock:
-        # check if request body is a valid JSON object
-        if not request.is_json:
-            return jsonify({'err': 'Request body must be a valid JSON object.'}), 400
-        
-        # check if the name and username fields are present and strings
-        start_time_str = request.json.get('start_date_time')
-        end_time_str = request.json.get('end_date_time')
-        if not start_time_str and not end_time_str:
-            return jsonify({'err': 'Start date time and End Date time fields are missing. Please include "start_date_time" and "end_date_time" '}), 400
-        if (start_time_str and not isinstance(start_time_str, str)) or (end_time_str and not isinstance(end_time_str, str)):
-            return jsonify({'err': 'Both fields should be strings'}), 400
-        
-        try:
-            if(start_time_str and end_time_str):
+        start_time_str = request.args.get('start_date_time')
+        end_time_str = request.args.get('end_date_time')
+        start_time = end_time = None
+
+        if start_time_str:
+            try:
                 start_time = datetime.fromisoformat(start_time_str)
+            except ValueError:
+                return jsonify({'err': 'Invalid start date-time format.'}), 400
+
+        if end_time_str:
+            try:
                 end_time = datetime.fromisoformat(end_time_str)
-            elif(start_time_str and not end_time_str):
-                start_time = datetime.fromisoformat(start_time_str)
-            elif(end_time_str and not start_time_str):
-                end_time = datetime.fromisoformat(end_time_str)
-        except ValueError:
-            return jsonify({'err': 'Please follow the correct Date - Time ISO8601 format - YYYY-MM-DDTHH:MM:SS.ssssss or YYYY-MM-DD .'}), 400
-        
-        if(start_time_str and end_time_str):
-            if start_time>end_time:
-                return jsonify({'err': 'Start time cannot be ahead of End time. Please correct the time.'}), 400   
-           
-        
-        # Filter posts based on timestamp range
+            except ValueError:
+                return jsonify({'err': 'Invalid end date-time format.'}), 400
+
+        if start_time and end_time and start_time > end_time:
+            return jsonify({'err': 'Start time cannot be later than end time.'}), 400
+
         filtered_posts = []
-        for post in posts:
-            
-            post_time = datetime.fromisoformat(posts[post]['timestamp'])
-            if start_time_str and end_time_str:
-                if start_time <= post_time <= end_time:
-                    return_post=posts[post]
-                    del return_post['key']
-                    filtered_posts.append(return_post)
-            elif start_time_str:
-                if start_time <= post_time:
-                    return_post=posts[post]
-                    del return_post['key']
-                    filtered_posts.append(return_post)
-            elif end_time_str:
-                if post_time <= end_time:
-                    return_post=posts[post]
-                    del return_post['key']
-                    filtered_posts.append(return_post)               
-        
-        if len(filtered_posts)==0:
-            return "No posts are created in the given timeframe"
-        else:
-            return jsonify(filtered_posts)
+        for post in posts.values():
+            post_time = datetime.fromisoformat(post['timestamp'])
+            if (not start_time or post_time >= start_time) and (not end_time or post_time <= end_time):
+                filtered_posts.append(post)
+
+        return jsonify(filtered_posts)
 
 # Extension 4 - User-based range queries
 @app.route('/posts/user/<string:username>', methods=['GET'])
@@ -331,3 +305,6 @@ def search_posts():
         else:
         # Return matched posts as JSON
             return jsonify(matched_posts)
+
+if __name__ == '__main__':
+    app.run(debug=True)
